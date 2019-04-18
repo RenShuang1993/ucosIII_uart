@@ -345,6 +345,10 @@ static void AppTaskCom (void *p_arg)
     XMC_UART_CH_Transmit (XMC_UART1_CH1, 'C');
     XMC_UART_CH_Transmit (XMC_UART1_CH1, ':');
     XMC_UART_CH_Transmit (XMC_UART1_CH1, ' ');
+    if(strcmp(msg,"BEL1")==0)
+    {
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'Y');
+    }
     for (i = 0; i <= msg_size; i++) {
       XMC_UART_CH_Transmit (XMC_UART1_CH1, msg[i]);
     }
