@@ -66,8 +66,12 @@ static  OS_TCB   AppTaskLED_2_TCB;
 // Memory Block                                                           // <2>
 OS_MEM      Mem_Partition;
 CPU_CHAR    MyPartitionStorage[NUM_MSG - 1][MAX_MSG_LENGTH];
+// Memory Block                                                           // <2>
+OS_MEM      Mem_LED1;
+CPU_CHAR    Mem_LED1Storage[NUM_MSG - 1][MAX_MSG_LENGTH];
 // Message Queue
 OS_Q        UART_ISR;
+OS_Q        DATA_Msg;
 uint8_t     keyPress;
 /****************************************************** FILE LOCAL PROTOTYPES */
 static  void AppTaskStart (void  *p_arg);
@@ -225,10 +229,25 @@ static void AppObjCreate (void)
           (OS_ERR    *) &err);
   if (err != OS_ERR_NONE)
     APP_TRACE_DBG ("Error OSMemCreate: AppObjCreate\n");
-
+   // Create Shared Memory
+  OSMemCreate ( (OS_MEM    *) &Mem_LED1,
+          (CPU_CHAR  *) "Mem LED1",
+          (void      *) &Mem_LED1Storage[0][0],
+          (OS_MEM_QTY)  NUM_MSG,
+          (OS_MEM_SIZE) MAX_MSG_LENGTH * sizeof (CPU_CHAR),
+          (OS_ERR    *) &err);
+  if (err != OS_ERR_NONE)
+    APP_TRACE_DBG ("Error OSMemCreate: AppObjCreate\n");
   // Create Message Queue
   OSQCreate ( (OS_Q *)     &UART_ISR,
         (CPU_CHAR *) "ISR Queue",
+        (OS_MSG_QTY) NUM_MSG,
+        (OS_ERR   *) &err);
+  if (err != OS_ERR_NONE)
+    APP_TRACE_DBG ("Error OSQCreate: AppObjCreate\n");
+  // Create Message Queue
+  OSQCreate ( (OS_Q *)     &DATA_Msg,
+        (CPU_CHAR *) "DATA Msg",
         (OS_MSG_QTY) NUM_MSG,
         (OS_ERR   *) &err);
   if (err != OS_ERR_NONE)
@@ -251,7 +270,7 @@ static void  AppTaskCreate (void)
            (CPU_CHAR   *) "TaskCOM",
            (OS_TASK_PTR) AppTaskCom,
            (void       *) 0,
-           (OS_PRIO) 3,
+           (OS_PRIO) 2,
            (CPU_STK    *) &AppTaskComStk[0],
            (CPU_STK_SIZE) APP_CFG_TASK_COM_STK_SIZE / 10u,
            (CPU_STK_SIZE) APP_CFG_TASK_COM_STK_SIZE,
@@ -307,6 +326,8 @@ static void AppTaskCom (void *p_arg)
   CPU_CHAR    msg[MAX_MSG_LENGTH];
   CPU_INT08U  i = 0;
   CPU_CHAR    debug_msg[MAX_MSG_LENGTH + 30];
+  //
+  CPU_CHAR    *pbuf=NULL;
 
   (void) p_arg;                                                          // <14>
   APP_TRACE_INFO ("Entering AppTaskCom ...\n");
@@ -353,15 +374,35 @@ static void AppTaskCom (void *p_arg)
       XMC_UART_CH_Transmit (XMC_UART1_CH1, msg[i]);
     }
     XMC_UART_CH_Transmit (XMC_UART1_CH1, '\n');
+    //message queue
+    pbuf = (CPU_CHAR *) OSMemGet (&Mem_LED1, &err);
+    pbuf = msg;
+    // the memory block into the queue to the application task
+		OSQPost ( (OS_Q      *) &DATA_Msg,
+			  (void      *) pbuf,
+			  (OS_MSG_SIZE) sizeof(msg),
+			  (OS_OPT)      OS_OPT_POST_FIFO,
+			  (OS_ERR    *) &err);
+		if (err != OS_ERR_NONE)
+			APP_TRACE_DBG ("Error OSQPost: BSP_IntHandler_Uart_Recive\n");
+
+		// clear the receive pointer and counter                              // <5>
+		pbuf = NULL;
     OSTimeDlyHMSM(0,0,0,20,OS_OPT_TIME_HMSM_STRICT,&err);//delay 20ms
   }
 }
 static  void AppTaskLED_1 (void  *p_arg)
 {
     OS_ERR err;
+    void        *p_msg;
     p_arg = p_arg;
+    CPU_TS      ts;
+    OS_MSG_SIZE msg_size;
+    CPU_CHAR    msg[MAX_MSG_LENGTH];
+
     while(DEF_TRUE)
     {
+  
       scanButtonsWithDebounce();
       // check for available button events in the circular buffer
       if (cbGet(&keyPress)) {
@@ -376,6 +417,26 @@ static  void AppTaskLED_1 (void  *p_arg)
         break;
       }
     }
+        // wait until a message is received
+    p_msg = OSQPend (&DATA_Msg,                                          
+         2,
+         OS_OPT_PEND_BLOCKING,
+         &msg_size,
+         &ts,
+         &err);
+    if (err != OS_ERR_NONE)
+      APP_TRACE_DBG ("Error OSQPend: AppTaskCom\n");
+    if(p_msg != NULL)
+    {
+    // obtain message we received
+    memcpy (msg, (CPU_CHAR*) p_msg, msg_size - 1); 
+    if(strcmp(msg,"BEL1")==0)
+    {
+      toggleLed(L1);
+    }
+    // release the memory partition allocated in the UART service routine
+    OSMemPut (&Mem_LED1, p_msg, &err);
+    } 
       OSTimeDlyHMSM(0,0,0,20,OS_OPT_TIME_HMSM_STRICT,&err);//delay 20ms
     }
 }
