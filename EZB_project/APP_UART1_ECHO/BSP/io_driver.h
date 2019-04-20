@@ -40,7 +40,8 @@ void scanButtonsWithDebounce(void);
 _Bool setupLedsOnRelaxkit(uint8_t pin);
 _Bool toggleLed(uint8_t led);
 
-void enterSleepmode(void);
+void set_high(uint8_t led);
+void set_low(uint8_t led);
 
 #endif
 /** EOF */

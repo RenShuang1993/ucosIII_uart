@@ -158,7 +158,8 @@ uint8_t setupButtonScanMode(uint8_t mode)
   }*/
   return 1;
 }
-_Bool toggleLed(uint8_t led) {
+_Bool toggleLed(uint8_t led) 
+{
   if (led == L1) {
     XMC_GPIO_ToggleOutput(P1_1);
     return true;
@@ -168,5 +169,27 @@ _Bool toggleLed(uint8_t led) {
     return true;
   }
   return false;
+}
+void set_high(uint8_t led)
+{
+  if (led == L1)
+  {
+      XMC_GPIO_SetOutputHigh(P1_1);
+  }
+  if (led == L2)
+  {
+      XMC_GPIO_SetOutputHigh(P1_0);
+  }
+}
+void set_low(uint8_t led)
+{
+  if (led == L1)
+  {
+      XMC_GPIO_SetOutputLow(P1_1);
+  }
+  if (led == L2)
+  {
+      XMC_GPIO_SetOutputLow(P1_0);
+  }
 }
 /** EOF */

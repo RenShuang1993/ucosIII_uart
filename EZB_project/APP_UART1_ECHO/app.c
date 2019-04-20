@@ -49,6 +49,7 @@
 #define ACK  0x6
 #define MAX_MSG_LENGTH 20
 #define NUM_MSG        3
+#define WAIT_DELAY     5000000
 
 /********************************************************* FILE LOCAL GLOBALS */
 static  CPU_STK  AppStartTaskStk[APP_CFG_TASK_START_STK_SIZE];            // <1>
@@ -388,7 +389,7 @@ static void AppTaskCom (void *p_arg)
 
 		// clear the receive pointer and counter                              // <5>
 		pbuf = NULL;
-    OSTimeDlyHMSM(0,0,0,20,OS_OPT_TIME_HMSM_STRICT,&err);//delay 20ms
+    OSTimeDlyHMSM(0,0,0,1,OS_OPT_TIME_HMSM_STRICT,&err);
   }
 }
 static  void AppTaskLED_1 (void  *p_arg)
@@ -399,16 +400,20 @@ static  void AppTaskLED_1 (void  *p_arg)
     CPU_TS      ts;
     OS_MSG_SIZE msg_size;
     CPU_CHAR    msg[MAX_MSG_LENGTH];
-
+    CPU_CHAR    *cmd;
+    bool       pause = false;
+    bool       bel_busy = false;
+    int        bel_number = 0;
     while(DEF_TRUE)
     {
-  
+      // empty the message buffer
+      memset (&msg, 0, MAX_MSG_LENGTH);
       scanButtonsWithDebounce();
       // check for available button events in the circular buffer
       if (cbGet(&keyPress)) {
         switch (keyPress) {
         case B1:
-          toggleLed(L1);
+          pause = true;
           break;
         case B2:
           toggleLed(L2);
@@ -417,9 +422,9 @@ static  void AppTaskLED_1 (void  *p_arg)
         break;
       }
     }
-        // wait until a message is received
+    // wait until a message is received
     p_msg = OSQPend (&DATA_Msg,                                          
-         2,
+         1,
          OS_OPT_PEND_BLOCKING,
          &msg_size,
          &ts,
@@ -429,15 +434,60 @@ static  void AppTaskLED_1 (void  *p_arg)
     if(p_msg != NULL)
     {
     // obtain message we received
-    memcpy (msg, (CPU_CHAR*) p_msg, msg_size - 1); 
-    if(strcmp(msg,"BEL1")==0)
+    memcpy (msg, (CPU_CHAR*) p_msg, msg_size - 1);
+    // get cmd from msg
+    cmd = strtok(msg,":");
+    //get BEL1,TL1
+    cmd = strtok( NULL,":");
+    if(strcmp(cmd,"BEL1")==0)
     {
-      toggleLed(L1);
+      bel_busy = true;
+      cmd = strtok(NULL,":");
+      bel_number = atoi(cmd);
+      cmd = NULL;
     }
     // release the memory partition allocated in the UART service routine
     OSMemPut (&Mem_LED1, p_msg, &err);
-    } 
-      OSTimeDlyHMSM(0,0,0,20,OS_OPT_TIME_HMSM_STRICT,&err);//delay 20ms
+    }
+    if(!pause)
+    {
+      //EBL1
+      if(bel_busy)
+      {
+        while(bel_number != 0)
+        {
+          bel_number--;
+          OSTimeDlyHMSM(0,0,0,100,OS_OPT_TIME_HMSM_STRICT,&err);
+          scanButtonsWithDebounce();
+          if (cbGet(&keyPress))
+          {
+            switch (keyPress)
+            {
+                case B1:
+                pause = true;
+                break;
+                default:
+                break;
+            }
+          }
+          if(pause)
+          {
+            break;
+          }
+          toggleLed(L1);
+        }
+        if(bel_number == 0)
+        {
+          bel_busy = false;
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'D');                           // <21>
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, '0');
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'N');
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'E');
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, '\n');
+        }
+      }
+    }
+    pause = false;
     }
 }
 /************************************************************************ EOF */
