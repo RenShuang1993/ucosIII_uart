@@ -401,9 +401,13 @@ static  void AppTaskLED_1 (void  *p_arg)
     OS_MSG_SIZE msg_size;
     CPU_CHAR    msg[MAX_MSG_LENGTH];
     CPU_CHAR    *cmd;
+    uint16_t    mid;
     bool       pause = false;
     bool       bel_busy = false;
+    bool       tel_busy = false;
     int        bel_number = 0;
+    CPU_INT32U        h_time;
+    CPU_INT32U        l_time;
     while(DEF_TRUE)
     {
       // empty the message buffer
@@ -437,6 +441,13 @@ static  void AppTaskLED_1 (void  *p_arg)
     memcpy (msg, (CPU_CHAR*) p_msg, msg_size - 1);
     // get cmd from msg
     cmd = strtok(msg,":");
+    mid = atoi(cmd);
+    XMC_UART_CH_Transmit (XMC_UART1_CH1,'M');
+    XMC_UART_CH_Transmit (XMC_UART1_CH1,'i');
+    XMC_UART_CH_Transmit (XMC_UART1_CH1,'d');
+    XMC_UART_CH_Transmit (XMC_UART1_CH1,':');
+    XMC_UART_CH_Transmit (XMC_UART1_CH1,mid);
+    XMC_UART_CH_Transmit (XMC_UART1_CH1,':');
     //get BEL1,TL1
     cmd = strtok( NULL,":");
     if(strcmp(cmd,"BEL1")==0)
@@ -446,6 +457,17 @@ static  void AppTaskLED_1 (void  *p_arg)
       bel_number = atoi(cmd);
       cmd = NULL;
     }
+    /*else if (strcmp(cmd,"TL1")==0) {
+      tel_busy = true;
+      cmd = strtok(NULL,":");
+      cmd = strtok(cmd,"H");
+      cmd = strtok(cmd,"L");
+      h_time = atoi(cmd);
+      cmd = strtok(NULL,"L");
+      l_time = atoi(cmd);
+      cmd = NULL;
+    }*/
+    
     // release the memory partition allocated in the UART service routine
     OSMemPut (&Mem_LED1, p_msg, &err);
     }
@@ -456,6 +478,7 @@ static  void AppTaskLED_1 (void  *p_arg)
       {
         while(bel_number != 0)
         {
+          
           bel_number--;
           OSTimeDlyHMSM(0,0,0,100,OS_OPT_TIME_HMSM_STRICT,&err);
           scanButtonsWithDebounce();
@@ -486,6 +509,61 @@ static  void AppTaskLED_1 (void  *p_arg)
           XMC_UART_CH_Transmit (XMC_UART1_CH1, '\n');
         }
       }
+      //TL1
+     /* if(tel_busy)
+      {
+        set_high(L1);
+        while(h_time != 0)
+        {
+          h_time--;
+          scanButtonsWithDebounce();
+          if (cbGet(&keyPress))
+          {
+            switch (keyPress)
+            {
+                case B1:
+                pause = true;
+                break;
+                default:
+                break;
+            }
+          }
+          if(pause)
+          {
+            break;
+          }
+          OSTimeDlyHMSM(0,0,0,1,OS_OPT_TIME_HMSM_STRICT,&err);//delay 1ms
+        }
+        if(!pause)
+        {
+          set_low(L1);
+          while(l_time !=0)
+          {
+            l_time--;
+            scanButtonsWithDebounce();
+            if (cbGet(&keyPress))
+            {
+              switch (keyPress)
+              {
+                case B1:
+                pause = true;
+                break;
+                default:
+                break;
+              }
+            }
+            if(pause)
+            {
+              break;
+            }
+            OSTimeDlyHMSM(0,0,0,1,OS_OPT_TIME_HMSM_STRICT,&err);//delay 1ms
+          }
+        }
+        if((l_time == 0) && (h_time == 0))
+        {
+          tel_busy = false;
+        }
+      }*/
     }
     pause = false;
     }
