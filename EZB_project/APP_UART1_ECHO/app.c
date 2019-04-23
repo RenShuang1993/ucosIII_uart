@@ -70,21 +70,24 @@ CPU_CHAR    MyPartitionStorage[NUM_MSG - 1][MAX_MSG_LENGTH];
 // Memory Block                                                           // <2>
 OS_MEM      Mem_LED1;
 CPU_CHAR    Mem_LED1Storage[NUM_MSG - 1][MAX_MSG_LENGTH];
+// Memory Block 
+OS_MEM      Mem_RES;
+CPU_CHAR    Mem_RESStorage[NUM_MSG - 1][MAX_MSG_LENGTH];
 // Message Queue
 OS_Q        UART_ISR;
 OS_Q        DATA_Msg;
 uint8_t     keyPress;
-/****************************************************** FILE LOCAL PROTOTYPES */
+/****************************************************** RES */
+bool        res = false;
+
+
+/************************************************************ FUNCTIONS/TASKS */
 static  void AppTaskStart (void  *p_arg);
 static  void AppTaskCreate (void);
 static  void AppObjCreate (void);
 static  void AppTaskCom (void  *p_arg);
 static  void AppTaskLED_1 (void  *p_arg);
 static  void AppTaskLED_2 (void  *p_arg);
-
-
-/************************************************************ FUNCTIONS/TASKS */
-
 /*********************************************************************** MAIN */
 /**
  * \function main
@@ -239,6 +242,15 @@ static void AppObjCreate (void)
           (OS_ERR    *) &err);
   if (err != OS_ERR_NONE)
     APP_TRACE_DBG ("Error OSMemCreate: AppObjCreate\n");
+   // Create Shared Memory
+  OSMemCreate ( (OS_MEM    *) &Mem_RES,
+          (CPU_CHAR  *) "Mem_RES",
+          (void      *) &Mem_RESStorage[0][0],
+          (OS_MEM_QTY)  NUM_MSG,
+          (OS_MEM_SIZE) MAX_MSG_LENGTH * sizeof (CPU_CHAR),
+          (OS_ERR    *) &err);
+  if (err != OS_ERR_NONE)
+    APP_TRACE_DBG ("Error OSMemCreate: AppObjCreate\n");
   // Create Message Queue
   OSQCreate ( (OS_Q *)     &UART_ISR,
         (CPU_CHAR *) "ISR Queue",
@@ -325,17 +337,19 @@ static void AppTaskCom (void *p_arg)
   OS_MSG_SIZE msg_size;
   CPU_TS      ts;
   CPU_CHAR    msg[MAX_MSG_LENGTH];
+  CPU_CHAR    msg_res[MAX_MSG_LENGTH];
   CPU_INT08U  i = 0;
   CPU_CHAR    debug_msg[MAX_MSG_LENGTH + 30];
-  //
   CPU_CHAR    *pbuf=NULL;
+  CPU_CHAR    *get_res=NULL;
+  
 
   (void) p_arg;                                                          // <14>
   APP_TRACE_INFO ("Entering AppTaskCom ...\n");
   while (DEF_TRUE) {
     // empty the message buffer
-    memset (&msg, 0, MAX_MSG_LENGTH);                                    // <15>
-
+    memset (&msg, 0, MAX_MSG_LENGTH);
+    memset (&msg_res, 0, MAX_MSG_LENGTH);                                     // <15> 
     // wait until a message is received
     p_msg = OSQPend (&UART_ISR,                                          // <16>
          0,
@@ -347,8 +361,8 @@ static void AppTaskCom (void *p_arg)
       APP_TRACE_DBG ("Error OSQPend: AppTaskCom\n");
 
     // obtain message we received
-    memcpy (msg, (CPU_CHAR*) p_msg, msg_size - 1);                       // <17>
-
+    memcpy(msg, (CPU_CHAR*) p_msg, msg_size - 1);                       // <17>
+    memcpy(msg_res,msg, msg_size - 1); 
     // release the memory partition allocated in the UART service routine
     OSMemPut (&Mem_Partition, p_msg, &err);                              // <18>
     if (err != OS_ERR_NONE)
@@ -367,29 +381,38 @@ static void AppTaskCom (void *p_arg)
     XMC_UART_CH_Transmit (XMC_UART1_CH1, 'C');
     XMC_UART_CH_Transmit (XMC_UART1_CH1, ':');
     XMC_UART_CH_Transmit (XMC_UART1_CH1, ' ');
-    if(strcmp(msg,"BEL1")==0)
-    {
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'Y');
-    }
     for (i = 0; i <= msg_size; i++) {
       XMC_UART_CH_Transmit (XMC_UART1_CH1, msg[i]);
     }
     XMC_UART_CH_Transmit (XMC_UART1_CH1, '\n');
     //message queue
     pbuf = (CPU_CHAR *) OSMemGet (&Mem_LED1, &err);
+    get_res = (CPU_CHAR *) OSMemGet (&Mem_RES, &err);
     pbuf = msg;
+    // get RES                              // <5> 
+    get_res = msg_res;
+    get_res = strtok(msg_res,":");
+    get_res = strtok( NULL,":");
+    if(strcmp(get_res,"RES")==0)
+    {
+      res = true;
+    }
+    get_res = NULL;
+    // release the memory 
+    OSMemPut (&Mem_RES, get_res, &err);    
     // the memory block into the queue to the application task
 		OSQPost ( (OS_Q      *) &DATA_Msg,
 			  (void      *) pbuf,
 			  (OS_MSG_SIZE) sizeof(msg),
-			  (OS_OPT)      OS_OPT_POST_FIFO,
+			  (OS_OPT)      OS_OPT_POST_FIFO + OS_OPT_POST_ALL,
 			  (OS_ERR    *) &err);
 		if (err != OS_ERR_NONE)
 			APP_TRACE_DBG ("Error OSQPost: BSP_IntHandler_Uart_Recive\n");
 
-		// clear the receive pointer and counter                              // <5>
 		pbuf = NULL;
+
     OSTimeDlyHMSM(0,0,0,1,OS_OPT_TIME_HMSM_STRICT,&err);
+
   }
 }
 static  void AppTaskLED_1 (void  *p_arg)
@@ -405,6 +428,9 @@ static  void AppTaskLED_1 (void  *p_arg)
     bool       pause = false;
     bool       bel_busy = false;
     bool       tel_busy = false;
+    bool       res_busy = false;
+    bool       on = false;
+    bool       off = false;
     int        bel_number = 0;
     CPU_INT32U        h_time;
     CPU_INT32U        l_time;
@@ -412,8 +438,9 @@ static  void AppTaskLED_1 (void  *p_arg)
     {
       // empty the message buffer
       memset (&msg, 0, MAX_MSG_LENGTH);
-      scanButtonsWithDebounce();
       // check for available button events in the circular buffer
+      scanButtonsWithDebounce();
+      scanButtonsWithDebounce();
       if (cbGet(&keyPress)) {
         switch (keyPress) {
         case B1:
@@ -448,7 +475,7 @@ static  void AppTaskLED_1 (void  *p_arg)
     XMC_UART_CH_Transmit (XMC_UART1_CH1,':');
     XMC_UART_CH_Transmit (XMC_UART1_CH1,mid);
     XMC_UART_CH_Transmit (XMC_UART1_CH1,':');
-    //get BEL1,TL1
+    //get BEL1,TL1,RES
     cmd = strtok( NULL,":");
     if(strcmp(cmd,"BEL1")==0)
     {
@@ -457,7 +484,7 @@ static  void AppTaskLED_1 (void  *p_arg)
       bel_number = atoi(cmd);
       cmd = NULL;
     }
-    /*else if (strcmp(cmd,"TL1")==0) {
+    else if (strcmp(cmd,"TL1")==0) {
       tel_busy = true;
       cmd = strtok(NULL,":");
       cmd = strtok(cmd,"H");
@@ -466,7 +493,52 @@ static  void AppTaskLED_1 (void  *p_arg)
       cmd = strtok(NULL,"L");
       l_time = atoi(cmd);
       cmd = NULL;
-    }*/
+    }
+    else if(strcmp(cmd,"RES")==0)
+    {
+      bel_busy = false;
+      tel_busy = false;
+      res_busy = true;
+      bel_number = 0;
+      h_time = 0;
+      l_time = 0;
+      cmd = strtok(NULL,":");
+      if(strcmp(cmd,"OFF")==0)
+      {
+        off = true;
+      }
+      else if(strcmp(cmd,"ON")==0)
+      {
+        on = true;
+      }
+      cmd = NULL;
+    }
+    else if(res)
+    {
+          res = false;
+          bel_number = 0;
+          h_time = 0;
+          l_time = 0;          
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'N');                           
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, '0');
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'T');
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, ' ');          
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'D');                           
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, '0');
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'N');
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'E');
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, '\n');
+    }
+    else
+    {
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'E');
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'r');
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'r');
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'o');
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'r');
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, '\n');
+    }
+    
     
     // release the memory partition allocated in the UART service routine
     OSMemPut (&Mem_LED1, p_msg, &err);
@@ -480,7 +552,6 @@ static  void AppTaskLED_1 (void  *p_arg)
         {
           
           bel_number--;
-          OSTimeDlyHMSM(0,0,0,100,OS_OPT_TIME_HMSM_STRICT,&err);
           scanButtonsWithDebounce();
           if (cbGet(&keyPress))
           {
@@ -497,6 +568,14 @@ static  void AppTaskLED_1 (void  *p_arg)
           {
             break;
           }
+          OSTimeDlyHMSM(0,0,0,100,OS_OPT_TIME_HMSM_STRICT,&err);
+          if(res)
+          {
+            bel_busy = false;
+            res_busy = true;
+            bel_number = 0;
+            break;
+          }
           toggleLed(L1);
         }
         if(bel_number == 0)
@@ -510,12 +589,19 @@ static  void AppTaskLED_1 (void  *p_arg)
         }
       }
       //TL1
-     /* if(tel_busy)
+     if(tel_busy)
       {
         set_high(L1);
+        
         while(h_time != 0)
         {
           h_time--;
+          if(res)
+          {
+            tel_busy = false;
+            res_busy = true;
+            break;
+          }          
           scanButtonsWithDebounce();
           if (cbGet(&keyPress))
           {
@@ -540,6 +626,12 @@ static  void AppTaskLED_1 (void  *p_arg)
           while(l_time !=0)
           {
             l_time--;
+            if(res)
+            {
+              tel_busy = false;
+              res_busy = true;
+              break;
+            }                      
             scanButtonsWithDebounce();
             if (cbGet(&keyPress))
             {
@@ -562,8 +654,38 @@ static  void AppTaskLED_1 (void  *p_arg)
         if((l_time == 0) && (h_time == 0))
         {
           tel_busy = false;
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'D');                           
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, '0');
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'N');
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'E');
+          XMC_UART_CH_Transmit (XMC_UART1_CH1, '\n');
         }
-      }*/
+      }
+    //RES
+    if(res_busy)
+    {
+      if(off)
+      {
+        set_low(L1);
+        off = false;
+      }
+      else if(on)
+      {
+        set_high(L1);
+        on = false;
+      }
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'N');                           // <21>
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, '0');
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'T');
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, ' ');
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'D');                           // <21>
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, '0');
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'N');
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'E');
+      XMC_UART_CH_Transmit (XMC_UART1_CH1, '\n');
+      res_busy = false;
+    }
+
     }
     pause = false;
     }

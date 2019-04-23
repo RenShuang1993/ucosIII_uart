@@ -84,13 +84,17 @@ _Bool setupButtonsOnRelaxkit(uint8_t button) {
  */
 void scanButtonsWithDebounce(void) 
 {
-  if ((XMC_GPIO_GetInput(BUTTON1) == 0) && (p1_14_pressed == 2))
+  /*if ((XMC_GPIO_GetInput(BUTTON1) == 0) && (p1_14_pressed == 2))
   {
     if (cbPut(B1) == true)
       p1_14_pressed = 0;
-  }
+  }*/
   if ((XMC_GPIO_GetInput(BUTTON1) == 0) && (p1_14_pressed == 1))
-    p1_14_pressed = 2;
+  {
+      if (cbPut(B1) == true)
+      p1_14_pressed = 0;
+    //p1_14_pressed = 2;
+  }
   if ((XMC_GPIO_GetInput(BUTTON1) == 0) && (p1_14_pressed == 0))
     p1_14_pressed = 1;
   
