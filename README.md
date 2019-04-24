@@ -19,11 +19,9 @@ The frame is terminated by an "end-of-frame" (EoF) character ($).
 
 The following examples shall detail the intended functionality.
 
-#1:BL1:10$          // blink LED1 10 times with a default timing.
-
-#2:TL1:H20L10$      // set high-time of LED1 to 20 ms and low-time to 10 ms.
-
-#3:RES:OFF$         // stop bot LEDs blinking and turn both LEDs OFF.
+'#1:BL1:10$          // blink LED1 10 times with a default timing.'
+'#2:TL1:H20L10$      // set high-time of LED1 to 20 ms and low-time to 10 ms.'
+'#3:RES:OFF$         // stop bot LEDs blinking and turn both LEDs OFF.'
 
 XMC Application Requirements
 Implement three application tasks:
