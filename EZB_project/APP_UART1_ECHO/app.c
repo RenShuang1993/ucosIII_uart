@@ -46,48 +46,48 @@
 #endif
 
 /******************************************************************** DEFINES */
-#define ACK  0x6
+#define ACK 0x6
 #define MAX_MSG_LENGTH 20
-#define NUM_MSG        3
-#define WAIT_DELAY     5000000
+#define NUM_MSG 3
+#define WAIT_DELAY 5000000
 
 /********************************************************* FILE LOCAL GLOBALS */
-static  CPU_STK  AppStartTaskStk[APP_CFG_TASK_START_STK_SIZE];            // <1>
-static  OS_TCB   AppStartTaskTCB;
+static CPU_STK AppStartTaskStk[APP_CFG_TASK_START_STK_SIZE]; // <1>
+static OS_TCB AppStartTaskTCB;
 
-static  CPU_STK  AppTaskComStk[APP_CFG_TASK_COM_STK_SIZE];
-static  OS_TCB   AppTaskComTCB;
+static CPU_STK AppTaskComStk[APP_CFG_TASK_COM_STK_SIZE];
+static OS_TCB AppTaskComTCB;
 
-static  CPU_STK  AppTaskLED_1Stk[APP_CFG_TASK_COM_STK_SIZE];
-static  OS_TCB   AppTaskLED_1_TCB;
+static CPU_STK AppTaskLED_1Stk[APP_CFG_TASK_COM_STK_SIZE];
+static OS_TCB AppTaskLED_1_TCB;
 
-static  CPU_STK  AppTaskLED_2Stk[APP_CFG_TASK_COM_STK_SIZE];
-static  OS_TCB   AppTaskLED_2_TCB;
+static CPU_STK AppTaskLED_2Stk[APP_CFG_TASK_COM_STK_SIZE];
+static OS_TCB AppTaskLED_2_TCB;
 
 // Memory Block                                                           // <2>
-OS_MEM      Mem_Partition;
-CPU_CHAR    MyPartitionStorage[NUM_MSG - 1][MAX_MSG_LENGTH];
+OS_MEM Mem_Partition;
+CPU_CHAR MyPartitionStorage[NUM_MSG - 1][MAX_MSG_LENGTH];
 // Memory Block                                                           // <2>
-OS_MEM      Mem_LED1;
-CPU_CHAR    Mem_LED1Storage[NUM_MSG - 1][MAX_MSG_LENGTH];
-// Memory Block 
-OS_MEM      Mem_RES;
-CPU_CHAR    Mem_RESStorage[NUM_MSG - 1][MAX_MSG_LENGTH];
+OS_MEM Mem_LED1;
+CPU_CHAR Mem_LED1Storage[NUM_MSG - 1][MAX_MSG_LENGTH];
+// Memory Block
+OS_MEM Mem_RES;
+CPU_CHAR Mem_RESStorage[NUM_MSG - 1][MAX_MSG_LENGTH];
 // Message Queue
-OS_Q        UART_ISR;
-OS_Q        DATA_Msg;
-uint8_t     keyPress;
+OS_Q UART_ISR;
+OS_Q DATA_Msg;
+OS_Q DATA_Msg_led2;
+uint8_t keyPress;
 /****************************************************** RES */
-bool        res = false;
-
+bool res = false;
 
 /************************************************************ FUNCTIONS/TASKS */
-static  void AppTaskStart (void  *p_arg);
-static  void AppTaskCreate (void);
-static  void AppObjCreate (void);
-static  void AppTaskCom (void  *p_arg);
-static  void AppTaskLED_1 (void  *p_arg);
-static  void AppTaskLED_2 (void  *p_arg);
+static void AppTaskStart(void *p_arg);
+static void AppTaskCreate(void);
+static void AppObjCreate(void);
+static void AppTaskCom(void *p_arg);
+static void AppTaskLED_1(void *p_arg);
+static void AppTaskLED_2(void *p_arg);
 /*********************************************************************** MAIN */
 /**
  * \function main
@@ -96,15 +96,15 @@ static  void AppTaskLED_2 (void  *p_arg);
  *
  * \brief This is the standard entry point for C code.
  */
-int main (void)
+int main(void)
 {
-  OS_ERR  err;
+  OS_ERR err;
 
   // Disable all interrupts                                               // <3>
   BSP_IntDisAll();
   // Enable Interrupt UART
-  BSP_IntEn (BSP_INT_ID_USIC1_01); //**
-  BSP_IntEn (BSP_INT_ID_USIC1_00); //**
+  BSP_IntEn(BSP_INT_ID_USIC1_01); //**
+  BSP_IntEn(BSP_INT_ID_USIC1_00); //**
 
 // init SEMI Hosting DEBUG Support                                        // <4>
 #if SEMI_HOSTING
@@ -113,39 +113,40 @@ int main (void)
 
 // init JLINK RTT DEBUG Support
 #if JLINK_RTT
-  SEGGER_RTT_ConfigDownBuffer (0, NULL, NULL, 0,
-             SEGGER_RTT_MODE_BLOCK_IF_FIFO_FULL);
-  SEGGER_RTT_ConfigUpBuffer (0, NULL, NULL, 0,
-           SEGGER_RTT_MODE_BLOCK_IF_FIFO_FULL);
+  SEGGER_RTT_ConfigDownBuffer(0, NULL, NULL, 0,
+                              SEGGER_RTT_MODE_BLOCK_IF_FIFO_FULL);
+  SEGGER_RTT_ConfigUpBuffer(0, NULL, NULL, 0,
+                            SEGGER_RTT_MODE_BLOCK_IF_FIFO_FULL);
 #endif
 
   // Init uC/OS-III
-  OSInit (&err);                                                          // <5>
+  OSInit(&err); // <5>
   if (err != OS_ERR_NONE)
-    APP_TRACE_DBG ("Error OSInit: main\n");
+    APP_TRACE_DBG("Error OSInit: main\n");
 
-  /* Create the start task */                                             // <6>
-  OSTaskCreate ( (OS_TCB     *) &AppStartTaskTCB,
-           (CPU_CHAR   *) "Startup Task",
-           (OS_TASK_PTR) AppTaskStart,
-           (void       *) 0,
-           (OS_PRIO) APP_CFG_TASK_START_PRIO,
-           (CPU_STK    *) &AppStartTaskStk[0],
-           (CPU_STK_SIZE) APP_CFG_TASK_START_STK_SIZE / 10u,
-           (CPU_STK_SIZE) APP_CFG_TASK_START_STK_SIZE,
-           (OS_MSG_QTY) 0u,
-           (OS_TICK) 0u,
-           (void       *) 0,
-           (OS_OPT) (OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR),
-           (OS_ERR     *) &err);
+  /* Create the start task */ // <6>
+  OSTaskCreate((OS_TCB *)&AppStartTaskTCB,
+               (CPU_CHAR *)"Startup Task",
+               (OS_TASK_PTR)AppTaskStart,
+               (void *)0,
+               (OS_PRIO)APP_CFG_TASK_START_PRIO,
+               (CPU_STK *)&AppStartTaskStk[0],
+               (CPU_STK_SIZE)APP_CFG_TASK_START_STK_SIZE / 10u,
+               (CPU_STK_SIZE)APP_CFG_TASK_START_STK_SIZE,
+               (OS_MSG_QTY)0u,
+               (OS_TICK)0u,
+               (void *)0,
+               (OS_OPT)(OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR),
+               (OS_ERR *)&err);
 
   // Start multitasking (i.e., give control to uC/OS-III)
-  OSStart (&err);                                                         // <7>
+  OSStart(&err); // <7>
   if (err != OS_ERR_NONE)
-    APP_TRACE_DBG ("Error OSStart: main\n");
+    APP_TRACE_DBG("Error OSStart: main\n");
 
-  while (1) {                                                             // <8>
-    APP_TRACE_DBG ("Should never be output! Bug?\n");
+  while (1)
+  { // <8>
+    APP_TRACE_DBG("Should never be output! Bug?\n");
   }
   return 0;
 }
@@ -161,23 +162,23 @@ int main (void)
  *        initializes CPU services, the memory, the systick timer,
  *        etc. and finally invokes other application tasks.
  */
-static void AppTaskStart (void *p_arg)
+static void AppTaskStart(void *p_arg)
 {
-  CPU_INT32U  cpu_clk_freq;
-  CPU_INT32U  cnts;
-  OS_ERR      err;
+  CPU_INT32U cpu_clk_freq;
+  CPU_INT32U cnts;
+  OS_ERR err;
 
-  (void) p_arg;
+  (void)p_arg;
   // initialize BSP functions
-  BSP_Init();                                                             // <9>
+  BSP_Init(); // <9>
   // initialize the uC/CPU services
   CPU_Init();
   // determine SysTick reference frequency
   cpu_clk_freq = BSP_SysClkFreqGet();
   // determine nbr SysTick increments
-  cnts = cpu_clk_freq / (CPU_INT32U) OSCfg_TickRate_Hz;
+  cnts = cpu_clk_freq / (CPU_INT32U)OSCfg_TickRate_Hz;
   // init uCOS-III periodic time src (SysTick)
-  OS_CPU_SysTickInit (cnts);
+  OS_CPU_SysTickInit(cnts);
   // initialize memory management module
   Mem_Init();
   // initialize mathematical module
@@ -189,27 +190,27 @@ static void AppTaskStart (void *p_arg)
   // init ports connected to the buttons (configures scanning using the timer)
   configureButtons();
 
-
 // compute CPU capacity with no task running
-#if (OS_CFG_STAT_TASK_EN > 0u)                                           // <10>
-  OSStatTaskCPUUsageInit (&err);
+#if (OS_CFG_STAT_TASK_EN > 0u) // <10>
+  OSStatTaskCPUUsageInit(&err);
   if (err != OS_ERR_NONE)
-    APP_TRACE_DBG ("Error OSStatTaskCPUUsageInit: AppTaskStart\n");
+    APP_TRACE_DBG("Error OSStatTaskCPUUsageInit: AppTaskStart\n");
 #endif
 
-  APP_TRACE_INFO ("Creating Application Objects...\n");                  // <11>
+  APP_TRACE_INFO("Creating Application Objects...\n"); // <11>
   // create application objects
   AppObjCreate();
 
-  APP_TRACE_INFO ("Creating Application Tasks...\n");                    // <12>
+  APP_TRACE_INFO("Creating Application Tasks...\n"); // <12>
   // create application tasks
   AppTaskCreate();
 
-  while (DEF_TRUE) {                                                     // <13>
+  while (DEF_TRUE)
+  { // <13>
     // Suspend current task
-    OSTaskSuspend ( (OS_TCB *) 0, &err);
+    OSTaskSuspend((OS_TCB *)0, &err);
     if (err != OS_ERR_NONE)
-      APP_TRACE_DBG ("Error OSTaskSuspend: AppTaskStart\n");
+      APP_TRACE_DBG("Error OSTaskSuspend: AppTaskStart\n");
   }
 }
 
@@ -220,51 +221,58 @@ static void AppTaskStart (void *p_arg)
  * \params none
  * \returns none
  */
-static void AppObjCreate (void)
+static void AppObjCreate(void)
 {
-  OS_ERR      err;
+  OS_ERR err;
 
   // Create Shared Memory
-  OSMemCreate ( (OS_MEM    *) &Mem_Partition,
-          (CPU_CHAR  *) "Mem Partition",
-          (void      *) &MyPartitionStorage[0][0],
-          (OS_MEM_QTY)  NUM_MSG,
-          (OS_MEM_SIZE) MAX_MSG_LENGTH * sizeof (CPU_CHAR),
-          (OS_ERR    *) &err);
+  OSMemCreate((OS_MEM *)&Mem_Partition,
+              (CPU_CHAR *)"Mem Partition",
+              (void *)&MyPartitionStorage[0][0],
+              (OS_MEM_QTY)NUM_MSG,
+              (OS_MEM_SIZE)MAX_MSG_LENGTH * sizeof(CPU_CHAR),
+              (OS_ERR *)&err);
   if (err != OS_ERR_NONE)
-    APP_TRACE_DBG ("Error OSMemCreate: AppObjCreate\n");
-   // Create Shared Memory
-  OSMemCreate ( (OS_MEM    *) &Mem_LED1,
-          (CPU_CHAR  *) "Mem LED1",
-          (void      *) &Mem_LED1Storage[0][0],
-          (OS_MEM_QTY)  NUM_MSG,
-          (OS_MEM_SIZE) MAX_MSG_LENGTH * sizeof (CPU_CHAR),
-          (OS_ERR    *) &err);
+    APP_TRACE_DBG("Error OSMemCreate: AppObjCreate\n");
+  // Create Shared Memory
+  OSMemCreate((OS_MEM *)&Mem_LED1,
+              (CPU_CHAR *)"Mem LED1",
+              (void *)&Mem_LED1Storage[0][0],
+              (OS_MEM_QTY)NUM_MSG,
+              (OS_MEM_SIZE)MAX_MSG_LENGTH * sizeof(CPU_CHAR),
+              (OS_ERR *)&err);
   if (err != OS_ERR_NONE)
-    APP_TRACE_DBG ("Error OSMemCreate: AppObjCreate\n");
-   // Create Shared Memory
-  OSMemCreate ( (OS_MEM    *) &Mem_RES,
-          (CPU_CHAR  *) "Mem_RES",
-          (void      *) &Mem_RESStorage[0][0],
-          (OS_MEM_QTY)  NUM_MSG,
-          (OS_MEM_SIZE) MAX_MSG_LENGTH * sizeof (CPU_CHAR),
-          (OS_ERR    *) &err);
+    APP_TRACE_DBG("Error OSMemCreate: AppObjCreate\n");
+  // Create Shared Memory
+  OSMemCreate((OS_MEM *)&Mem_RES,
+              (CPU_CHAR *)"Mem_RES",
+              (void *)&Mem_RESStorage[0][0],
+              (OS_MEM_QTY)NUM_MSG,
+              (OS_MEM_SIZE)MAX_MSG_LENGTH * sizeof(CPU_CHAR),
+              (OS_ERR *)&err);
   if (err != OS_ERR_NONE)
-    APP_TRACE_DBG ("Error OSMemCreate: AppObjCreate\n");
+    APP_TRACE_DBG("Error OSMemCreate: AppObjCreate\n");
   // Create Message Queue
-  OSQCreate ( (OS_Q *)     &UART_ISR,
-        (CPU_CHAR *) "ISR Queue",
-        (OS_MSG_QTY) NUM_MSG,
-        (OS_ERR   *) &err);
+  OSQCreate((OS_Q *)&UART_ISR,
+            (CPU_CHAR *)"ISR Queue",
+            (OS_MSG_QTY)NUM_MSG,
+            (OS_ERR *)&err);
   if (err != OS_ERR_NONE)
-    APP_TRACE_DBG ("Error OSQCreate: AppObjCreate\n");
+    APP_TRACE_DBG("Error OSQCreate: AppObjCreate\n");
   // Create Message Queue
-  OSQCreate ( (OS_Q *)     &DATA_Msg,
-        (CPU_CHAR *) "DATA Msg",
-        (OS_MSG_QTY) NUM_MSG,
-        (OS_ERR   *) &err);
+  OSQCreate((OS_Q *)&DATA_Msg,
+            (CPU_CHAR *)"DATA Msg",
+            (OS_MSG_QTY)NUM_MSG,
+            (OS_ERR *)&err);
   if (err != OS_ERR_NONE)
-    APP_TRACE_DBG ("Error OSQCreate: AppObjCreate\n");
+    APP_TRACE_DBG("Error OSQCreate: AppObjCreate\n");
+  // Create Message Queue
+  OSQCreate((OS_Q *)&DATA_Msg_led2,
+            (CPU_CHAR *)"DATA Msg led2",
+            (OS_MSG_QTY)NUM_MSG,
+            (OS_ERR *)&err);
+  if (err != OS_ERR_NONE)
+    APP_TRACE_DBG("Error OSQCreate: AppObjCreate\n");
 }
 
 /*************************************************** Create Application Tasks */
@@ -274,40 +282,56 @@ static void AppObjCreate (void)
  * \params none
  * \returns none
  */
-static void  AppTaskCreate (void)
+static void AppTaskCreate(void)
 {
-  OS_ERR      err;
+  OS_ERR err;
 
   // create AppTask_COM
-  OSTaskCreate ( (OS_TCB     *) &AppTaskComTCB,
-           (CPU_CHAR   *) "TaskCOM",
-           (OS_TASK_PTR) AppTaskCom,
-           (void       *) 0,
-           (OS_PRIO) 2,
-           (CPU_STK    *) &AppTaskComStk[0],
-           (CPU_STK_SIZE) APP_CFG_TASK_COM_STK_SIZE / 10u,
-           (CPU_STK_SIZE) APP_CFG_TASK_COM_STK_SIZE,
-           (OS_MSG_QTY) 0u,
-           (OS_TICK) 0u,
-           (void       *) 0,
-           (OS_OPT) (OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR),
-           (OS_ERR     *) &err);
+  OSTaskCreate((OS_TCB *)&AppTaskComTCB,
+               (CPU_CHAR *)"TaskCOM",
+               (OS_TASK_PTR)AppTaskCom,
+               (void *)0,
+               (OS_PRIO)2,
+               (CPU_STK *)&AppTaskComStk[0],
+               (CPU_STK_SIZE)APP_CFG_TASK_COM_STK_SIZE / 10u,
+               (CPU_STK_SIZE)APP_CFG_TASK_COM_STK_SIZE,
+               (OS_MSG_QTY)0u,
+               (OS_TICK)0u,
+               (void *)0,
+               (OS_OPT)(OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR),
+               (OS_ERR *)&err);
   // create AppTaskLED_1
-  OSTaskCreate ( (OS_TCB     *) &AppTaskLED_1_TCB,
-           (CPU_CHAR   *) "LED_1",
-           (OS_TASK_PTR) AppTaskLED_1,
-           (void       *) 0,
-           (OS_PRIO) 3,
-           (CPU_STK    *) &AppTaskLED_1Stk[0],
-           (CPU_STK_SIZE) APP_CFG_TASK_COM_STK_SIZE / 10u,
-           (CPU_STK_SIZE) APP_CFG_TASK_COM_STK_SIZE,
-           (OS_MSG_QTY) 0u,
-           (OS_TICK) 0u,
-           (void       *) 0,
-           (OS_OPT) (OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR),
-           (OS_ERR     *) &err);
+  OSTaskCreate((OS_TCB *)&AppTaskLED_1_TCB,
+               (CPU_CHAR *)"LED_1",
+               (OS_TASK_PTR)AppTaskLED_1,
+               (void *)0,
+               (OS_PRIO)3,
+               (CPU_STK *)&AppTaskLED_1Stk[0],
+               (CPU_STK_SIZE)APP_CFG_TASK_COM_STK_SIZE / 10u,
+               (CPU_STK_SIZE)APP_CFG_TASK_COM_STK_SIZE,
+               (OS_MSG_QTY)0u,
+               (OS_TICK)0u,
+               (void *)0,
+               (OS_OPT)(OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR),
+               (OS_ERR *)&err);
   if (err != OS_ERR_NONE)
-    APP_TRACE_DBG ("Error OSTaskCreate: AppTaskCreate\n");
+    APP_TRACE_DBG("Error OSTaskCreate: AppTaskCreate\n");
+  // create AppTaskLED_2
+  OSTaskCreate((OS_TCB *)&AppTaskLED_2_TCB,
+               (CPU_CHAR *)"LED_2",
+               (OS_TASK_PTR)AppTaskLED_2,
+               (void *)0,
+               (OS_PRIO)3,
+               (CPU_STK *)&AppTaskLED_2Stk[0],
+               (CPU_STK_SIZE)APP_CFG_TASK_COM_STK_SIZE / 10u,
+               (CPU_STK_SIZE)APP_CFG_TASK_COM_STK_SIZE,
+               (OS_MSG_QTY)0u,
+               (OS_TICK)0u,
+               (void *)0,
+               (OS_OPT)(OS_OPT_TASK_STK_CHK | OS_OPT_TASK_STK_CLR),
+               (OS_ERR *)&err);
+  if (err != OS_ERR_NONE)
+    APP_TRACE_DBG("Error OSTaskCreate: AppTaskCreate\n");
 }
 
 /*********************************** Communication Application Task */
@@ -330,246 +354,272 @@ static void  AppTaskCreate (void)
  *            Enter strings like: #12345$, #abc$, etc.
  *            The XMC will respond with: XMC: 12345, XMC: abc, etc.
  */
-static void AppTaskCom (void *p_arg)
+static void AppTaskCom(void *p_arg)
 {
-  void        *p_msg;
-  OS_ERR      err;
+  void *p_msg;
+  OS_ERR err;
   OS_MSG_SIZE msg_size;
-  CPU_TS      ts;
-  CPU_CHAR    msg[MAX_MSG_LENGTH];
-  CPU_CHAR    msg_res[MAX_MSG_LENGTH];
-  CPU_INT08U  i = 0;
-  CPU_CHAR    debug_msg[MAX_MSG_LENGTH + 30];
-  CPU_CHAR    *pbuf=NULL;
-  CPU_CHAR    *get_res=NULL;
-  
+  CPU_TS ts;
+  CPU_CHAR msg[MAX_MSG_LENGTH];
+  CPU_CHAR msg_res[MAX_MSG_LENGTH];
+  CPU_INT08U i = 0;
+  CPU_CHAR debug_msg[MAX_MSG_LENGTH + 30];
+  CPU_CHAR *pbuf = NULL;
+  CPU_CHAR *get_res = NULL;
 
-  (void) p_arg;                                                          // <14>
-  APP_TRACE_INFO ("Entering AppTaskCom ...\n");
-  while (DEF_TRUE) {
+  (void)p_arg; // <14>
+  APP_TRACE_INFO("Entering AppTaskCom ...\n");
+  while (DEF_TRUE)
+  {
     // empty the message buffer
-    memset (&msg, 0, MAX_MSG_LENGTH);
-    memset (&msg_res, 0, MAX_MSG_LENGTH);                                     // <15> 
+    memset(&msg, 0, MAX_MSG_LENGTH);
+    memset(&msg_res, 0, MAX_MSG_LENGTH); // <15>
     // wait until a message is received
-    p_msg = OSQPend (&UART_ISR,                                          // <16>
-         0,
-         OS_OPT_PEND_BLOCKING,
-         &msg_size,
-         &ts,
-         &err);
+    p_msg = OSQPend(&UART_ISR, // <16>
+                    0,
+                    OS_OPT_PEND_BLOCKING,
+                    &msg_size,
+                    &ts,
+                    &err);
     if (err != OS_ERR_NONE)
-      APP_TRACE_DBG ("Error OSQPend: AppTaskCom\n");
+      APP_TRACE_DBG("Error OSQPend: AppTaskCom\n");
 
     // obtain message we received
-    memcpy(msg, (CPU_CHAR*) p_msg, msg_size - 1);                       // <17>
-    memcpy(msg_res,msg, msg_size - 1); 
+    memcpy(msg, (CPU_CHAR *)p_msg, msg_size - 1); // <17>
+    memcpy(msg_res, msg, msg_size - 1);
     // release the memory partition allocated in the UART service routine
-    OSMemPut (&Mem_Partition, p_msg, &err);                              // <18>
+    OSMemPut(&Mem_Partition, p_msg, &err); // <18>
     if (err != OS_ERR_NONE)
-      APP_TRACE_DBG ("Error OSMemPut: AppTaskCom\n");
+      APP_TRACE_DBG("Error OSMemPut: AppTaskCom\n");
 
     // send ACK in return
-    XMC_UART_CH_Transmit (XMC_UART1_CH1, ACK);                           // <19>
+    XMC_UART_CH_Transmit(XMC_UART1_CH1, ACK); // <19>
 
     // print the received message to the debug interface
-    sprintf (debug_msg, "Msg: %s\tLength: %d\n", msg, msg_size - 1);     // <20>
-    APP_TRACE_INFO (debug_msg);
+    sprintf(debug_msg, "Msg: %s\tLength: %d\n", msg, msg_size - 1); // <20>
+    APP_TRACE_INFO(debug_msg);
 
     // send the received message back via the UART pre-text with "XMC: "
-    XMC_UART_CH_Transmit (XMC_UART1_CH1, 'X');                           // <21>
-    XMC_UART_CH_Transmit (XMC_UART1_CH1, 'M');
-    XMC_UART_CH_Transmit (XMC_UART1_CH1, 'C');
-    XMC_UART_CH_Transmit (XMC_UART1_CH1, ':');
-    XMC_UART_CH_Transmit (XMC_UART1_CH1, ' ');
-    for (i = 0; i <= msg_size; i++) {
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, msg[i]);
+    XMC_UART_CH_Transmit(XMC_UART1_CH1, 'X'); // <21>
+    XMC_UART_CH_Transmit(XMC_UART1_CH1, 'M');
+    XMC_UART_CH_Transmit(XMC_UART1_CH1, 'C');
+    XMC_UART_CH_Transmit(XMC_UART1_CH1, ':');
+    XMC_UART_CH_Transmit(XMC_UART1_CH1, ' ');
+    for (i = 0; i <= msg_size; i++)
+    {
+      XMC_UART_CH_Transmit(XMC_UART1_CH1, msg[i]);
     }
-    XMC_UART_CH_Transmit (XMC_UART1_CH1, '\n');
+    XMC_UART_CH_Transmit(XMC_UART1_CH1, '\n');
     //message queue
-    pbuf = (CPU_CHAR *) OSMemGet (&Mem_LED1, &err);
-    get_res = (CPU_CHAR *) OSMemGet (&Mem_RES, &err);
+    pbuf = (CPU_CHAR *)OSMemGet(&Mem_LED1, &err);
+    get_res = (CPU_CHAR *)OSMemGet(&Mem_RES, &err);
     pbuf = msg;
-    // get RES                              // <5> 
+    // get RES                              // <5>
     get_res = msg_res;
-    get_res = strtok(msg_res,":");
-    get_res = strtok( NULL,":");
-    if(strcmp(get_res,"RES")==0)
+    get_res = strtok(msg_res, ":");
+    get_res = strtok(NULL, ":");
+    if (strcmp(get_res, "RES") == 0)
     {
       res = true;
+      // the memory block into the queue to the application task
+      OSQPost((OS_Q *)&DATA_Msg,
+              (void *)pbuf,
+              (OS_MSG_SIZE)sizeof(msg),
+              (OS_OPT)OS_OPT_POST_FIFO + OS_OPT_POST_ALL,
+              (OS_ERR *)&err);
+      if (err != OS_ERR_NONE)
+        APP_TRACE_DBG("Error OSQPost: BSP_IntHandler_Uart_Recive\n");
+    }
+    else if ((strcmp(get_res, "BL1") == 0) || (strcmp(get_res, "TL1") == 0))
+    {
+      // the memory block into the queue to the application task
+      OSQPost((OS_Q *)&DATA_Msg,
+              (void *)pbuf,
+              (OS_MSG_SIZE)sizeof(msg),
+              (OS_OPT)OS_OPT_POST_FIFO,
+              (OS_ERR *)&err);
+      if (err != OS_ERR_NONE)
+        APP_TRACE_DBG("Error OSQPost: BSP_IntHandler_Uart_Recive\n");
+    }
+    else if ((strcmp(get_res, "BL2") == 0) || (strcmp(get_res, "TL2") == 0))
+    {
+      // the memory block into the queue to the application task
+      OSQPost((OS_Q *)&DATA_Msg_led2,
+              (void *)pbuf,
+              (OS_MSG_SIZE)sizeof(msg),
+              (OS_OPT)OS_OPT_POST_FIFO,
+              (OS_ERR *)&err);
+      if (err != OS_ERR_NONE)
+        APP_TRACE_DBG("Error OSQPost: BSP_IntHandler_Uart_Recive\n");
     }
     get_res = NULL;
-    // release the memory 
-    OSMemPut (&Mem_RES, get_res, &err);    
-    // the memory block into the queue to the application task
-		OSQPost ( (OS_Q      *) &DATA_Msg,
-			  (void      *) pbuf,
-			  (OS_MSG_SIZE) sizeof(msg),
-			  (OS_OPT)      OS_OPT_POST_FIFO + OS_OPT_POST_ALL,
-			  (OS_ERR    *) &err);
-		if (err != OS_ERR_NONE)
-			APP_TRACE_DBG ("Error OSQPost: BSP_IntHandler_Uart_Recive\n");
+    // release the memory
+    OSMemPut(&Mem_RES, get_res, &err);
 
-		pbuf = NULL;
+    pbuf = NULL;
 
-    OSTimeDlyHMSM(0,0,0,1,OS_OPT_TIME_HMSM_STRICT,&err);
-
+    OSTimeDlyHMSM(0, 0, 0, 1, OS_OPT_TIME_HMSM_STRICT, &err);
   }
 }
-static  void AppTaskLED_1 (void  *p_arg)
+static void AppTaskLED_1(void *p_arg)
 {
-    OS_ERR err;
-    void        *p_msg;
-    p_arg = p_arg;
-    CPU_TS      ts;
-    OS_MSG_SIZE msg_size;
-    CPU_CHAR    msg[MAX_MSG_LENGTH];
-    CPU_CHAR    *cmd;
-    uint16_t    mid;
-    bool       pause = false;
-    bool       bel_busy = false;
-    bool       tel_busy = false;
-    bool       res_busy = false;
-    bool       on = false;
-    bool       off = false;
-    int        bel_number = 0;
-    CPU_INT32U        h_time;
-    CPU_INT32U        l_time;
-    while(DEF_TRUE)
+  OS_ERR err;
+  void *p_msg;
+  p_arg = p_arg;
+  CPU_TS ts;
+  OS_MSG_SIZE msg_size;
+  CPU_CHAR msg[MAX_MSG_LENGTH];
+  CPU_CHAR *cmd;
+  uint16_t mid;
+  bool pause = false;
+  bool bel_busy = false;
+  bool tel_busy = false;
+  bool res_busy = false;
+  bool on = false;
+  bool off = false;
+  int bel_number = 0;
+  CPU_INT32U h_time;
+  CPU_INT32U l_time;
+  while (DEF_TRUE)
+  {
+    // empty the message buffer
+    memset(&msg, 0, MAX_MSG_LENGTH);
+    // check for available button events in the circular buffer
+    scanButtonsWithDebounce();
+    scanButtonsWithDebounce();
+    if (cbGet(&keyPress))
     {
-      // empty the message buffer
-      memset (&msg, 0, MAX_MSG_LENGTH);
-      // check for available button events in the circular buffer
-      scanButtonsWithDebounce();
-      scanButtonsWithDebounce();
-      if (cbGet(&keyPress)) {
-        switch (keyPress) {
-        case B1:
-          pause = true;
-          break;
-        case B2:
-          toggleLed(L2);
-         break;
+      switch (keyPress)
+      {
+      case B1:
+        pause = true;
+        break;
+      case B2:
+        toggleLed(L2);
+        break;
       default:
         break;
       }
     }
     // wait until a message is received
-    p_msg = OSQPend (&DATA_Msg,                                          
-         1,
-         OS_OPT_PEND_BLOCKING,
-         &msg_size,
-         &ts,
-         &err);
+    p_msg = OSQPend(&DATA_Msg,
+                    1,
+                    OS_OPT_PEND_BLOCKING,
+                    &msg_size,
+                    &ts,
+                    &err);
     if (err != OS_ERR_NONE)
-      APP_TRACE_DBG ("Error OSQPend: AppTaskCom\n");
-    if(p_msg != NULL)
+      APP_TRACE_DBG("Error OSQPend: AppTaskCom\n");
+    if (p_msg != NULL)
     {
-    // obtain message we received
-    memcpy (msg, (CPU_CHAR*) p_msg, msg_size - 1);
-    // get cmd from msg
-    cmd = strtok(msg,":");
-    mid = atoi(cmd);
-    XMC_UART_CH_Transmit (XMC_UART1_CH1,'M');
-    XMC_UART_CH_Transmit (XMC_UART1_CH1,'i');
-    XMC_UART_CH_Transmit (XMC_UART1_CH1,'d');
-    XMC_UART_CH_Transmit (XMC_UART1_CH1,':');
-    XMC_UART_CH_Transmit (XMC_UART1_CH1,mid);
-    XMC_UART_CH_Transmit (XMC_UART1_CH1,':');
-    //get BEL1,TL1,RES
-    cmd = strtok( NULL,":");
-    if(strcmp(cmd,"BEL1")==0)
-    {
-      bel_busy = true;
-      cmd = strtok(NULL,":");
-      bel_number = atoi(cmd);
-      cmd = NULL;
-    }
-    else if (strcmp(cmd,"TL1")==0) {
-      tel_busy = true;
-      cmd = strtok(NULL,":");
-      cmd = strtok(cmd,"H");
-      cmd = strtok(cmd,"L");
-      h_time = atoi(cmd);
-      cmd = strtok(NULL,"L");
-      l_time = atoi(cmd);
-      cmd = NULL;
-    }
-    else if(strcmp(cmd,"RES")==0)
-    {
-      bel_busy = false;
-      tel_busy = false;
-      res_busy = true;
-      bel_number = 0;
-      h_time = 0;
-      l_time = 0;
-      cmd = strtok(NULL,":");
-      if(strcmp(cmd,"OFF")==0)
+      // obtain message we received
+      memcpy(msg, (CPU_CHAR *)p_msg, msg_size - 1);
+      // get cmd from msg
+      cmd = strtok(msg, ":");
+      mid = atoi(cmd);
+      XMC_UART_CH_Transmit(XMC_UART1_CH1, 'M');
+      XMC_UART_CH_Transmit(XMC_UART1_CH1, 'i');
+      XMC_UART_CH_Transmit(XMC_UART1_CH1, 'd');
+      XMC_UART_CH_Transmit(XMC_UART1_CH1, ':');
+      XMC_UART_CH_Transmit(XMC_UART1_CH1, mid);
+      XMC_UART_CH_Transmit(XMC_UART1_CH1, ':');
+      //get BEL1,TL1,RES
+      cmd = strtok(NULL, ":");
+      if (strcmp(cmd, "BL1") == 0)
       {
-        off = true;
+        bel_busy = true;
+        cmd = strtok(NULL, ":");
+        bel_number = atoi(cmd);
+        cmd = NULL;
+        // release the memory partition allocated in the UART service routine
       }
-      else if(strcmp(cmd,"ON")==0)
+      else if (strcmp(cmd, "TL1") == 0)
       {
-        on = true;
+        tel_busy = true;
+        cmd = strtok(NULL, ":");
+        cmd = strtok(cmd, "H");
+        cmd = strtok(cmd, "L");
+        h_time = atoi(cmd);
+        cmd = strtok(NULL, "L");
+        l_time = atoi(cmd);
+        cmd = NULL;
+        // release the memory partition allocated in the UART service routine
       }
-      cmd = NULL;
+      else if (strcmp(cmd, "RES") == 0)
+      {
+        bel_busy = false;
+        tel_busy = false;
+        res_busy = true;
+        bel_number = 0;
+        h_time = 0;
+        l_time = 0;
+        cmd = strtok(NULL, ":");
+        if (strcmp(cmd, "OFF") == 0)
+        {
+          off = true;
+        }
+        else if (strcmp(cmd, "ON") == 0)
+        {
+          on = true;
+        }
+        cmd = NULL;
+        // release the memory partition allocated in the UART service routine
+      }
+      else if (res)
+      {
+        res = false;
+        bel_number = 0;
+        h_time = 0;
+        l_time = 0;
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'N');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, '0');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'T');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, ' ');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'D');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, '0');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'N');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'E');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, '\n');
+      }
+      else
+      {
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'E');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'r');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'r');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'o');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'r');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, '\n');
+      }
+      // release the memory partition allocated in the UART service routine
+      OSMemPut(&Mem_LED1, p_msg, &err);
     }
-    else if(res)
-    {
-          res = false;
-          bel_number = 0;
-          h_time = 0;
-          l_time = 0;          
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'N');                           
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, '0');
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'T');
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, ' ');          
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'D');                           
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, '0');
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'N');
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'E');
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, '\n');
-    }
-    else
-    {
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'E');
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'r');
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'r');
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'o');
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'r');
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, '\n');
-    }
-    
-    
-    // release the memory partition allocated in the UART service routine
-    OSMemPut (&Mem_LED1, p_msg, &err);
-    }
-    if(!pause)
+    if (!pause)
     {
       //EBL1
-      if(bel_busy)
+      if (bel_busy)
       {
-        while(bel_number != 0)
+        while (bel_number != 0)
         {
-          
+
           bel_number--;
           scanButtonsWithDebounce();
           if (cbGet(&keyPress))
           {
             switch (keyPress)
             {
-                case B1:
-                pause = true;
-                break;
-                default:
-                break;
+            case B1:
+              pause = true;
+              break;
+            default:
+              break;
             }
           }
-          if(pause)
+          if (pause)
           {
             break;
           }
-          OSTimeDlyHMSM(0,0,0,100,OS_OPT_TIME_HMSM_STRICT,&err);
-          if(res)
+          OSTimeDlyHMSM(0, 0, 0, 100, OS_OPT_TIME_HMSM_STRICT, &err);
+          if (res)
           {
             bel_busy = false;
             res_busy = true;
@@ -578,117 +628,391 @@ static  void AppTaskLED_1 (void  *p_arg)
           }
           toggleLed(L1);
         }
-        if(bel_number == 0)
+        if (bel_number == 0)
         {
           bel_busy = false;
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'D');                           // <21>
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, '0');
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'N');
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'E');
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, '\n');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, 'D'); // <21>
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, '0');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, 'N');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, 'E');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, '\n');
         }
       }
       //TL1
-     if(tel_busy)
+      if (tel_busy)
       {
         set_high(L1);
-        
-        while(h_time != 0)
+
+        while (h_time != 0)
         {
           h_time--;
-          if(res)
+          if (res)
           {
             tel_busy = false;
             res_busy = true;
             break;
-          }          
+          }
           scanButtonsWithDebounce();
           if (cbGet(&keyPress))
           {
             switch (keyPress)
             {
-                case B1:
-                pause = true;
-                break;
-                default:
-                break;
+            case B1:
+              pause = true;
+              break;
+            default:
+              break;
             }
           }
-          if(pause)
+          if (pause)
           {
             break;
           }
-          OSTimeDlyHMSM(0,0,0,1,OS_OPT_TIME_HMSM_STRICT,&err);//delay 1ms
+          OSTimeDlyHMSM(0, 0, 0, 1, OS_OPT_TIME_HMSM_STRICT, &err); //delay 1ms
         }
-        if(!pause)
+        if (!pause)
         {
           set_low(L1);
-          while(l_time !=0)
+          while (l_time != 0)
           {
             l_time--;
-            if(res)
+            if (res)
             {
               tel_busy = false;
               res_busy = true;
               break;
-            }                      
+            }
             scanButtonsWithDebounce();
             if (cbGet(&keyPress))
             {
               switch (keyPress)
               {
-                case B1:
+              case B1:
                 pause = true;
                 break;
-                default:
+              default:
                 break;
               }
             }
-            if(pause)
+            if (pause)
             {
               break;
             }
-            OSTimeDlyHMSM(0,0,0,1,OS_OPT_TIME_HMSM_STRICT,&err);//delay 1ms
+            OSTimeDlyHMSM(0, 0, 0, 1, OS_OPT_TIME_HMSM_STRICT, &err); //delay 1ms
           }
         }
-        if((l_time == 0) && (h_time == 0))
+        if ((l_time == 0) && (h_time == 0))
         {
           tel_busy = false;
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'D');                           
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, '0');
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'N');
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, 'E');
-          XMC_UART_CH_Transmit (XMC_UART1_CH1, '\n');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, 'D');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, '0');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, 'N');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, 'E');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, '\n');
         }
       }
-    //RES
-    if(res_busy)
-    {
-      if(off)
+      //RES
+      if (res_busy)
       {
-        set_low(L1);
-        off = false;
+        if (off)
+        {
+          set_low(L1);
+          set_low(L2);
+          off = false;
+        }
+        else if (on)
+        {
+          set_high(L1);
+          set_high(L2);
+          on = false;
+        }
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'N'); // <21>
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, '0');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'T');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, ' ');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'D'); // <21>
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, '0');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'N');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'E');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, '\n');
+        res_busy = false;
       }
-      else if(on)
-      {
-        set_high(L1);
-        on = false;
-      }
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'N');                           // <21>
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, '0');
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'T');
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, ' ');
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'D');                           // <21>
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, '0');
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'N');
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, 'E');
-      XMC_UART_CH_Transmit (XMC_UART1_CH1, '\n');
-      res_busy = false;
-    }
-
     }
     pause = false;
+  }
+}
+static void AppTaskLED_2(void *p_arg)
+{
+  OS_ERR err;
+  void *p_msg;
+  p_arg = p_arg;
+  CPU_TS ts;
+  OS_MSG_SIZE msg_size;
+  CPU_CHAR msg[MAX_MSG_LENGTH];
+  CPU_CHAR *cmd;
+  uint16_t mid;
+  bool pause = false;
+  bool bel_busy = false;
+  bool tel_busy = false;
+  bool res_busy = false;
+  bool on = false;
+  bool off = false;
+  int bel_number = 0;
+  CPU_INT32U h_time;
+  CPU_INT32U l_time;
+  while (DEF_TRUE)
+  {
+    // empty the message buffer
+    memset(&msg, 0, MAX_MSG_LENGTH);
+    // check for available button events in the circular buffer
+    scanButtonsWithDebounce();
+    scanButtonsWithDebounce();
+    if (cbGet(&keyPress))
+    {
+      switch (keyPress)
+      {
+      case B2:
+        pause = true;
+        break;
+      default:
+        break;
+      }
     }
+    // wait until a message is received
+    p_msg = OSQPend(&DATA_Msg_led2,
+                    1,
+                    OS_OPT_PEND_BLOCKING,
+                    &msg_size,
+                    &ts,
+                    &err);
+    if (err != OS_ERR_NONE)
+      APP_TRACE_DBG("Error OSQPend: AppTaskCom\n");
+    if (p_msg != NULL)
+    {
+      // obtain message we received
+      memcpy(msg, (CPU_CHAR *)p_msg, msg_size - 1);
+      // get cmd from msg
+      cmd = strtok(msg, ":");
+      mid = atoi(cmd);
+      XMC_UART_CH_Transmit(XMC_UART1_CH1, 'M');
+      XMC_UART_CH_Transmit(XMC_UART1_CH1, 'i');
+      XMC_UART_CH_Transmit(XMC_UART1_CH1, 'd');
+      XMC_UART_CH_Transmit(XMC_UART1_CH1, ':');
+      XMC_UART_CH_Transmit(XMC_UART1_CH1, mid);
+      XMC_UART_CH_Transmit(XMC_UART1_CH1, ':');
+      //get BL2,TL2,RES
+      cmd = strtok(NULL, ":");
+      if (strcmp(cmd, "BL2") == 0)
+      {
+        bel_busy = true;
+        cmd = strtok(NULL, ":");
+        bel_number = atoi(cmd);
+        cmd = NULL;
+      }
+      else if (strcmp(cmd, "TL2") == 0)
+      {
+        tel_busy = true;
+        cmd = strtok(NULL, ":");
+        cmd = strtok(cmd, "H");
+        cmd = strtok(cmd, "L");
+        h_time = atoi(cmd);
+        cmd = strtok(NULL, "L");
+        l_time = atoi(cmd);
+        cmd = NULL;
+      }
+      else if (strcmp(cmd, "RES") == 0)
+      {
+        bel_busy = false;
+        tel_busy = false;
+        res_busy = true;
+        bel_number = 0;
+        h_time = 0;
+        l_time = 0;
+        cmd = strtok(NULL, ":");
+        if (strcmp(cmd, "OFF") == 0)
+        {
+          off = true;
+        }
+        else if (strcmp(cmd, "ON") == 0)
+        {
+          on = true;
+        }
+        cmd = NULL;
+      }
+      else if (res)
+      {
+        res = false;
+        bel_number = 0;
+        h_time = 0;
+        l_time = 0;
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'N');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, '0');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'T');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, ' ');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'D');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, '0');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'N');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'E');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, '\n');
+      }
+      else
+      {
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'E');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'r');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'r');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'o');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'r');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, '\n');
+      }
+      OSMemPut(&Mem_LED1, p_msg, &err);
+    }
+    if (!pause)
+    {
+      //BL2
+      if (bel_busy)
+      {
+        while (bel_number != 0)
+        {
+
+          bel_number--;
+          scanButtonsWithDebounce();
+          if (cbGet(&keyPress))
+          {
+            switch (keyPress)
+            {
+            case B1:
+              pause = true;
+              break;
+            default:
+              break;
+            }
+          }
+          if (pause)
+          {
+            break;
+          }
+          OSTimeDlyHMSM(0, 0, 0, 100, OS_OPT_TIME_HMSM_STRICT, &err);
+          if (res)
+          {
+            bel_busy = false;
+            res_busy = true;
+            bel_number = 0;
+            break;
+          }
+          toggleLed(L2);
+        }
+        if (bel_number == 0)
+        {
+          bel_busy = false;
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, 'D'); // <21>
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, '0');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, 'N');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, 'E');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, '\n');
+        }
+      }
+      //TL2
+      if (tel_busy)
+      {
+        set_high(L2);
+
+        while (h_time != 0)
+        {
+          h_time--;
+          if (res)
+          {
+            tel_busy = false;
+            res_busy = true;
+            break;
+          }
+          scanButtonsWithDebounce();
+          if (cbGet(&keyPress))
+          {
+            switch (keyPress)
+            {
+            case B1:
+              pause = true;
+              break;
+            default:
+              break;
+            }
+          }
+          if (pause)
+          {
+            break;
+          }
+          OSTimeDlyHMSM(0, 0, 0, 1, OS_OPT_TIME_HMSM_STRICT, &err); //delay 1ms
+        }
+        if (!pause)
+        {
+          set_low(L2);
+          while (l_time != 0)
+          {
+            l_time--;
+            if (res)
+            {
+              tel_busy = false;
+              res_busy = true;
+              break;
+            }
+            scanButtonsWithDebounce();
+            if (cbGet(&keyPress))
+            {
+              switch (keyPress)
+              {
+              case B1:
+                pause = true;
+                break;
+              default:
+                break;
+              }
+            }
+            if (pause)
+            {
+              break;
+            }
+            OSTimeDlyHMSM(0, 0, 0, 1, OS_OPT_TIME_HMSM_STRICT, &err); //delay 1ms
+          }
+        }
+        if ((l_time == 0) && (h_time == 0))
+        {
+          tel_busy = false;
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, 'D');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, '0');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, 'N');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, 'E');
+          XMC_UART_CH_Transmit(XMC_UART1_CH1, '\n');
+        }
+      }
+      //RES
+      if (res_busy)
+      {
+        if (off)
+        {
+          set_low(L2);
+          set_low(L1);
+          off = false;
+        }
+        else if (on)
+        {
+          set_high(L2);
+          set_high(L1);
+          on = false;
+        }
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'N'); // <21>
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, '0');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'T');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, ' ');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'D'); // <21>
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, '0');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'N');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, 'E');
+        XMC_UART_CH_Transmit(XMC_UART1_CH1, '\n');
+        res_busy = false;
+      }
+    }
+    pause = false;
+  }
 }
 /************************************************************************ EOF */
 /******************************************************************************/
